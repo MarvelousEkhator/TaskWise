@@ -1,7 +1,7 @@
 {
-  "name": "alexatasker-mcp",
+  "name": "taskwise",
   "version": "0.1.0",
-  "description": "MCP server bridging Alexa+ to a task/calendar assistant, powered by AWS Bedrock",
+  "description": "AI-agent skill and MCP server for tasks, calendar and day planning, with LaunchGuard launch-readiness checks",
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
