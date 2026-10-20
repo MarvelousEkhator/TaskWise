@@ -115,7 +115,7 @@ function buildServer() {
     },
     async ({ title, dueDate, priority, estimateMinutes, notes }) => {
       try {
-        const task = addTask({ title, dueDate, priority, estimateMinutes, notes });
+        const task = await addTask({ title, dueDate, priority, estimateMinutes, notes });
         return textResult(`Added task: "${task.title}" (id: ${task.id})`, JSON.stringify(task));
       } catch (err) {
         return errorResult(errorMessage(err));
@@ -135,19 +135,23 @@ function buildServer() {
         .describe("Set true to also include finished tasks"),
     },
     async ({ includeCompleted }) => {
-      const tasks = listTasks(includeCompleted);
-      const summary = tasks.length
-        ? tasks
-            .map(
-              (t) =>
-                `- ${t.done ? "[done] " : ""}${t.title} [${t.priority}]` +
-                `${t.dueDate ? ` (due ${t.dueDate})` : ""}` +
-                `${t.estimateMinutes ? ` (~${t.estimateMinutes} min)` : ""}` +
-                ` (id: ${t.id})`
-            )
-            .join("\n")
-        : "No tasks found.";
-      return textResult(summary, JSON.stringify(tasks));
+      try {
+        const tasks = await listTasks(includeCompleted);
+        const summary = tasks.length
+          ? tasks
+              .map(
+                (t) =>
+                  `- ${t.done ? "[done] " : ""}${t.title} [${t.priority}]` +
+                  `${t.dueDate ? ` (due ${t.dueDate})` : ""}` +
+                  `${t.estimateMinutes ? ` (~${t.estimateMinutes} min)` : ""}` +
+                  ` (id: ${t.id})`
+              )
+              .join("\n")
+          : "No tasks found.";
+        return textResult(summary, JSON.stringify(tasks));
+      } catch (err) {
+        return errorResult(errorMessage(err));
+      }
     }
   );
 
@@ -184,7 +188,7 @@ function buildServer() {
         return errorResult("Nothing to update. Provide at least one field to change.");
       }
       try {
-        const task = updateTask(id, changes);
+        const task = await updateTask(id, changes);
         if (!task) return errorResult(`No task found with id ${id}. Use list_tasks to find the right id.`);
         return textResult(`Updated task: "${task.title}"`, JSON.stringify(task));
       } catch (err) {
@@ -198,9 +202,13 @@ function buildServer() {
     "Mark a task as done. Use when the user says they finished something. Needs the task id (from list_tasks).",
     { id: z.string().describe("Task id from list_tasks") },
     async ({ id }) => {
-      const task = completeTask(id);
-      if (!task) return errorResult(`No task found with id ${id}. Use list_tasks to find the right id.`);
-      return textResult(`Marked "${task.title}" as done.`, JSON.stringify(task));
+      try {
+        const task = await completeTask(id);
+        if (!task) return errorResult(`No task found with id ${id}. Use list_tasks to find the right id.`);
+        return textResult(`Marked "${task.title}" as done.`, JSON.stringify(task));
+      } catch (err) {
+        return errorResult(errorMessage(err));
+      }
     }
   );
 
@@ -216,15 +224,19 @@ function buildServer() {
         .describe("Must be true, and only after the user explicitly confirmed the deletion"),
     },
     async ({ id, confirm }) => {
-      const task = getTask(id);
-      if (!task) return errorResult(`No task found with id ${id}. Use list_tasks to find the right id.`);
-      if (confirm !== true) {
-        return textResult(
-          `Not deleted. Ask the user to confirm deleting "${task.title}", then call delete_task again with confirm=true.`
-        );
+      try {
+        const task = await getTask(id);
+        if (!task) return errorResult(`No task found with id ${id}. Use list_tasks to find the right id.`);
+        if (confirm !== true) {
+          return textResult(
+            `Not deleted. Ask the user to confirm deleting "${task.title}", then call delete_task again with confirm=true.`
+          );
+        }
+        await deleteTask(id);
+        return textResult(`Deleted task: "${task.title}".`);
+      } catch (err) {
+        return errorResult(errorMessage(err));
       }
-      deleteTask(id);
-      return textResult(`Deleted task: "${task.title}".`);
     }
   );
 
@@ -245,8 +257,13 @@ function buildServer() {
         .describe("Minutes the user has free. Ask for this if they want to know what fits"),
     },
     async ({ date, availableMinutes }) => {
-      const plan = buildPlan(listTasks(false), { date, availableMinutes });
-      return textResult(formatPlan(plan), JSON.stringify(plan));
+      try {
+        const pending = await listTasks(false);
+        const plan = buildPlan(pending, { date, availableMinutes });
+        return textResult(formatPlan(plan), JSON.stringify(plan));
+      } catch (err) {
+        return errorResult(errorMessage(err));
+      }
     }
   );
 
