@@ -1,4 +1,5 @@
-import { randomUUID } from "crypto";
+import { Prisma, type Task as DbTask } from "@prisma/client";
+import { prisma } from "./db.js";
 
 export type Priority = "low" | "medium" | "high";
 
@@ -31,9 +32,26 @@ export interface TaskUpdate {
   notes?: string | null;
 }
 
-// NOTE: tasks live in memory only. They are lost when the server restarts
-// and are shared by everyone who can reach the server.
-const tasks: Map<string, Task> = new Map();
+// Tasks are stored in Postgres (Neon) via Prisma and survive restarts.
+// NOTE: there are no user accounts yet, so tasks are shared by everyone who can reach the server.
+
+function toTask(row: DbTask): Task {
+  return {
+    id: row.id,
+    title: row.title,
+    dueDate: row.dueDate ?? undefined,
+    priority: row.priority as Priority,
+    estimateMinutes: row.estimateMinutes ?? undefined,
+    notes: row.notes ?? undefined,
+    done: row.done,
+    createdAt: row.createdAt.toISOString(),
+    completedAt: row.completedAt?.toISOString(),
+  };
+}
+
+function isNotFound(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025";
+}
 
 /** True only for real calendar dates written as YYYY-MM-DD. */
 export function isValidDate(value: string): boolean {
@@ -55,38 +73,38 @@ function assertEstimate(value: number): void {
   }
 }
 
-export function addTask(input: NewTaskInput): Task {
+export async function addTask(input: NewTaskInput): Promise<Task> {
   const title = input.title.trim();
   if (!title) throw new Error("Task title cannot be empty.");
   if (input.dueDate !== undefined) assertDate(input.dueDate);
   if (input.estimateMinutes !== undefined) assertEstimate(input.estimateMinutes);
 
-  const task: Task = {
-    id: randomUUID(),
-    title,
-    dueDate: input.dueDate,
-    priority: input.priority ?? "medium",
-    estimateMinutes: input.estimateMinutes,
-    notes: input.notes?.trim() || undefined,
-    done: false,
-    createdAt: new Date().toISOString(),
-  };
-  tasks.set(task.id, task);
-  return task;
+  const row = await prisma.task.create({
+    data: {
+      title,
+      dueDate: input.dueDate ?? null,
+      priority: input.priority ?? "medium",
+      estimateMinutes: input.estimateMinutes ?? null,
+      notes: input.notes?.trim() || null,
+    },
+  });
+  return toTask(row);
 }
 
-export function listTasks(includeCompleted = false): Task[] {
-  return Array.from(tasks.values()).filter((t) => includeCompleted || !t.done);
+export async function listTasks(includeCompleted = false): Promise<Task[]> {
+  const rows = await prisma.task.findMany({
+    where: includeCompleted ? {} : { done: false },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows.map(toTask);
 }
 
-export function getTask(id: string): Task | null {
-  return tasks.get(id) ?? null;
+export async function getTask(id: string): Promise<Task | null> {
+  const row = await prisma.task.findUnique({ where: { id } });
+  return row ? toTask(row) : null;
 }
 
-export function updateTask(id: string, changes: TaskUpdate): Task | null {
-  const task = tasks.get(id);
-  if (!task) return null;
-
+export async function updateTask(id: string, changes: TaskUpdate): Promise<Task | null> {
   // Validate everything first so a bad value never leaves a half-updated task.
   if (changes.title !== undefined && !changes.title.trim()) {
     throw new Error("Task title cannot be empty.");
@@ -94,24 +112,36 @@ export function updateTask(id: string, changes: TaskUpdate): Task | null {
   if (typeof changes.dueDate === "string") assertDate(changes.dueDate);
   if (typeof changes.estimateMinutes === "number") assertEstimate(changes.estimateMinutes);
 
-  if (changes.title !== undefined) task.title = changes.title.trim();
-  if (changes.dueDate !== undefined) task.dueDate = changes.dueDate ?? undefined;
-  if (changes.priority !== undefined) task.priority = changes.priority;
-  if (changes.estimateMinutes !== undefined) {
-    task.estimateMinutes = changes.estimateMinutes ?? undefined;
+  const data: Prisma.TaskUpdateInput = {};
+  if (changes.title !== undefined) data.title = changes.title.trim();
+  if (changes.dueDate !== undefined) data.dueDate = changes.dueDate;
+  if (changes.priority !== undefined) data.priority = changes.priority;
+  if (changes.estimateMinutes !== undefined) data.estimateMinutes = changes.estimateMinutes;
+  if (changes.notes !== undefined) data.notes = changes.notes?.trim() || null;
+
+  try {
+    const row = await prisma.task.update({ where: { id }, data });
+    return toTask(row);
+  } catch (err) {
+    if (isNotFound(err)) return null;
+    throw err;
   }
-  if (changes.notes !== undefined) task.notes = changes.notes?.trim() || undefined;
-  return task;
 }
 
-export function completeTask(id: string): Task | null {
-  const task = tasks.get(id);
-  if (!task) return null;
-  task.done = true;
-  task.completedAt = new Date().toISOString();
-  return task;
+export async function completeTask(id: string): Promise<Task | null> {
+  try {
+    const row = await prisma.task.update({
+      where: { id },
+      data: { done: true, completedAt: new Date() },
+    });
+    return toTask(row);
+  } catch (err) {
+    if (isNotFound(err)) return null;
+    throw err;
+  }
 }
 
-export function deleteTask(id: string): boolean {
-  return tasks.delete(id);
+export async function deleteTask(id: string): Promise<boolean> {
+  const result = await prisma.task.deleteMany({ where: { id } });
+  return result.count > 0;
 }
