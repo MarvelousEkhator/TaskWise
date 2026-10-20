@@ -29,6 +29,10 @@ const API_KEY = process.env.TASKWISE_API_KEY;
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 
+// ---------- Dashboard (static files from /public) ----------
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+app.use(express.static(path.join(__dirname, "..", "public")));
+
 // ---------- CORS ----------
 app.use((req: Request, res: Response, next: NextFunction) => {
   res.header("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
