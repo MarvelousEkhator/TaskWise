@@ -151,3 +151,26 @@ export function formatPlan(result: PlanResult): string {
 
   return lines.join("\n");
 }
+  server.tool(
+    "launchguard_report",
+    "DEVELOPER MODE ONLY. Run LaunchGuard, a read-only launch-readiness check of this project's files and settings: " +
+      "build and test setup, secrets in files, security configuration, API and backend health, UX basics, and documentation. " +
+      "Use only when the developer explicitly asks for LaunchGuard or a launch-readiness check. Never call it during normal " +
+      "task or planning conversations. It changes nothing and never shows secret values. It does not run builds or tests, and " +
+      "it is not a penetration test: never tell the user the app is 'secure'. Report findings with their CONFIRMED, SUSPECTED, " +
+      "or NEEDS MANUAL REVIEW label. Never apply fixes automatically: describe the change and get the developer's agreement first.",
+    {
+      minSeverity: z
+        .enum(["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"])
+        .optional()
+        .describe("Lowest severity to show. Defaults to INFO (everything)"),
+    },
+    async ({ minSeverity }) => {
+      try {
+        const report = runLaunchGuard();
+        return textResult(formatReport(report, minSeverity ?? "INFO"), JSON.stringify(report));
+      } catch (err) {
+        return errorResult(errorMessage(err));
+      }
+    }
+  );
