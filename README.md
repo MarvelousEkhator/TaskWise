@@ -1,40 +1,102 @@
+# TaskWise
 
-# AlexaTasker MCP
+TaskWise is an AI-agent skill and MCP server that manages your tasks and calendar, plans realistic days, and flags conflicts and overload. It also includes **LaunchGuard**, a built-in developer mode that checks whether a project is ready to launch.
 
-An MCP (Model Context Protocol) server that bridges Alexa+ to a real task and calendar assistant — powered by AWS Bedrock for AI-generated daily planning.
+> Formerly AlexaTasker.
 
-Built for the Fire TV / Alexa+ / Ring / Bee Hackathon — **Alexa+ track** + **AWS Builder mini**.
+## Status
 
-## What it does
+TaskWise is under active development. This table is the honest picture of what exists today versus what is planned.
 
-AlexaTasker exposes a set of tools over MCP (Streamable HTTP, spec 2025-11-25+) that let an Alexa+ agent manage your tasks conversationally:
+| Area | Status |
+| --- | --- |
+| MCP server (Streamable HTTP, `POST /mcp`) | Working |
+| Health check (`GET /health`) | Working |
+| Task tools | Working (verify the tool list in `src/`) |
+| `plan_day` (due-date-sorted planner) | Working, basic |
+| Web dashboard | Working, Add button being fixed (MCP handshake) |
+| Calendar integration | Planned |
+| Conflict and overload detection | Planned |
+| Task breakdown | Planned |
+| LaunchGuard (local readiness checker) | Planned |
 
-- `add_task` — add a new task, optionally with a due date
-- `list_tasks` — list current (or completed) tasks
-- `complete_task` — mark a task as done
-- `plan_day` — ask AWS Bedrock (Claude) to generate a time-blocked plan for your day based on your current task list
+## How it works
 
-The idea: instead of manually opening a to-do app, you just tell Alexa+ "add a task to call the dentist tomorrow" or "plan my day," and AlexaTasker handles the logic behind the scenes.
+TaskWise has two clearly separated modes.
+
+**Productivity Mode** (for everyday users) reads, creates, updates and completes tasks, and plans your day around deadlines and priorities. It separates information, recommendations and actions, and asks for confirmation before important or destructive changes.
+
+**LaunchGuard Mode** (for developers) runs locally inside a project. It inspects structure, scripts, build, tests, lint and types, configuration, secrets (values are never printed), API handling, and docs, then produces a readiness report. It is not a penetration-testing tool and never claims a project is completely secure.
 
 ## Tech stack
 
-- Node.js + TypeScript
-- Express
-- `@modelcontextprotocol/sdk` (Streamable HTTP transport)
-- AWS Bedrock (`@aws-sdk/client-bedrock-runtime`)
-- Zod for schema validation
+Node.js, TypeScript, Express, `@modelcontextprotocol/sdk`, zod.
+
+## Project layout
+
+```
+src/         MCP server and tools
+dashboard/   Static web dashboard
+```
 
 ## Getting started
 
-### Prerequisites
+Requirements: Node.js (use the version in `package.json` or `.nvmrc`).
 
-- Node.js 20+
-- An AWS account with Bedrock model access enabled
-- AWS IAM credentials scoped to Bedrock (`bedrock:InvokeModel`)
+```bash
+git clone https://github.com/GroveGoals/TaskWise.git
+cd TaskWise
+npm install
+npm run build
+npm start
+```
 
-### Setup
+> Check these script names against `package.json` and adjust if they differ.
 
-1. Clone the repo:
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/taskbridge-mcp.git
-   cd alexatasker-mcp
+The server exposes:
+
+- `GET /health` for health checks
+- `POST /mcp` for MCP over Streamable HTTP
+
+## Configuration
+
+Set environment variables in a local `.env` file (never commit it) or in your host's settings.
+
+| Variable | Purpose |
+| --- | --- |
+| `PORT` | Port the server listens on (if used) |
+| _add the rest from your code_ | |
+
+Never commit secrets, tokens, or credentials.
+
+## Using the MCP server
+
+Every client must follow the MCP handshake:
+
+1. Send `initialize` and read the `Mcp-Session-Id` response header.
+2. Send `notifications/initialized`.
+3. Send `tools/call` requests with the `Mcp-Session-Id` header.
+
+Send `Accept: application/json, text/event-stream` on every POST. Responses may arrive as server-sent events.
+
+## Deployment (Render)
+
+- **Backend:** a Web Service using the build and start commands above, with health check path `/health`.
+- **Dashboard:** a Static Site with publish directory `dashboard`.
+- Set the backend's CORS allowed origin to your dashboard URL, and point the dashboard at your backend URL.
+
+## Example prompts
+
+- "Plan my day tomorrow."
+- "What do I need to finish this week?"
+- "I have three hours free this afternoon. What should I work on?"
+
+## Roadmap
+
+Calendar integration, conflict and overload detection, task breakdown, LaunchGuard, and packaging as an installable agent skill (`SKILL.md`).
+
+## License
+
+MIT License
+
+Copyright (c) 2026 Marvelous Osagieduwa Henry Ekhator .
