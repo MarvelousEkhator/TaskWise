@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LaunchGuard</title>
+<style>
+:root{--bg:#faf8f3;--card:#fff;--text:#1f1d1a;--muted:#6b665e;--line:#e4dfd4;--accent:#2f5d50;--on:#fff}
+@media(prefers-color-scheme:dark){:root{--bg:#141412;--card:#1e1d1a;--text:#f0ece4;--muted:#a09a8e;--line:#34322c;--accent:#7fb5a3;--on:#10201a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 Georgia,serif}
+main{max-width:640px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:26px;margin:0 0 4px}
+.muted{color:var(--muted);font-size:14px}
+select,button{font:inherit;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:9px 12px}
+button.primary{background:var(--accent);color:var(--on);border-color:var(--accent);cursor:pointer}
+.row{display:flex;gap:8px;margin:14px 0}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;font:13px/1.5 ui-monospace,Menlo,monospace}
+.err{color:#a33a2c;font-size:14px;min-height:20px}
+</style>
+</head>
+<body>
+<main>
+  <h1>LaunchGuard</h1>
+  <p class="muted">Developer mode. Checks this project before you launch it. It changes nothing. <a href="/">Back to TaskWise</a></p>
+  <div class="row">
+    <select id="sev" aria-label="Lowest severity to show">
+      <option value="INFO">Show everything</option>
+      <option value="LOW">Low and above</option>
+      <option value="MEDIUM">Medium and above</option>
+      <option value="HIGH">High and above</option>
+    </select>
+    <button id="run" class="primary">Run LaunchGuard</button>
+  </div>
+  <div id="msg" class="err"></div>
+  <pre id="out" hidden></pre>
+</main>
+<script>
+var key='';
+try{key=localStorage.getItem('taskwise_key')||''}catch(e){}
+var msg=document.getElementById('msg'),out=document.getElementById('out');
+document.getElementById('run').onclick=async function(){
+  msg.textContent='';
+  if(!key){msg.textContent='Sign in on the main TaskWise page first.';return}
+  out.hidden=true;msg.textContent='Running checks…';
+  try{
+    var res=await fetch('/mcp',{method:'POST',
+      headers:{'Content-Type':'application/json','Accept':'application/json, text/event-stream','Authorization':'Bearer '+key},
+      body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'launchguard_report',arguments:{minSeverity:document.getElementById('sev').value}}})});
+    if(res.status===401){msg.textContent='Your saved access key was not accepted. Sign in again on the main page.';return}
+    if(!res.ok){msg.textContent='The server returned an error ('+res.status+'). Try again.';return}
+    var data=await res.json();
+    if(data.error){msg.textContent=data.error.message;return}
+    out.textContent=data.result.content[0].text;
+    out.hidden=false;msg.textContent='';
+  }catch(e){msg.textContent="Couldn't reach the server. Try again in a minute.";}
+};
+</script>
+</body>
+</html>
