@@ -1,274 +1,182 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AlexaTasker</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TaskWise</title>
 <style>
-  * { box-sizing: border-box; }
-  body {
-    font-family: Georgia, "Times New Roman", serif;
-    background: #f4f1ea;
-    color: #2b2b28;
-    margin: 0;
-    padding: 2.5rem 1.5rem;
-  }
-  .container { max-width: 480px; margin: 0 auto; }
-  h1 {
-    font-size: 1.6rem;
-    font-weight: normal;
-    letter-spacing: 0.02em;
-    margin-bottom: 0.2rem;
-    border-bottom: 2px solid #2b2b28;
-    padding-bottom: 0.5rem;
-  }
-  .subtitle {
-    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-    color: #6b675f;
-    font-size: 0.85rem;
-    margin-bottom: 2rem;
-  }
-  .add-form {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1.5rem;
-    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  }
-  input[type="text"], input[type="date"] {
-    background: #fff;
-    border: 1px solid #ccc7ba;
-    color: #2b2b28;
-    padding: 0.55rem 0.7rem;
-    font-size: 0.9rem;
-  }
-  input[type="text"] { flex: 1; }
-  button {
-    background: #2b2b28;
-    color: #f4f1ea;
-    border: none;
-    padding: 0.55rem 1rem;
-    cursor: pointer;
-    font-size: 0.85rem;
-    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-    letter-spacing: 0.03em;
-  }
-  button:hover { background: #4a4944; }
-  .task {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-bottom: 1px solid #ddd8cc;
-    padding: 0.7rem 0.1rem;
-    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  }
-  .task-title { font-size: 0.95rem; }
-  .task-due { color: #8a8577; font-size: 0.8rem; margin-left: 0.5rem; }
-  .done-btn {
-    background: transparent;
-    color: #6b675f;
-    border: 1px solid #ccc7ba;
-    padding: 0.25rem 0.6rem;
-    font-size: 0.75rem;
-  }
-  .done-btn:hover { background: #ddd8cc; color: #2b2b28; }
-  .plan-btn {
-    width: 100%;
-    margin-top: 1.5rem;
-    padding: 0.7rem;
-    background: transparent;
-    color: #2b2b28;
-    border: 1px solid #2b2b28;
-  }
-  .plan-btn:hover { background: #2b2b28; color: #f4f1ea; }
-  .plan-output {
-    border-left: 3px solid #2b2b28;
-    padding: 0.8rem 1rem;
-    margin-top: 1rem;
-    white-space: pre-wrap;
-    font-size: 0.9rem;
-    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-    display: none;
-  }
-  .empty {
-    color: #8a8577;
-    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-    font-size: 0.85rem;
-    padding: 0.8rem 0.1rem;
-  }
-  .error-box {
-    color: #b00020;
-    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-    font-size: 0.85rem;
-    padding: 0.8rem 0.1rem;
-  }
+:root{--bg:#faf8f3;--card:#fff;--text:#1f1d1a;--muted:#6b665e;--line:#e4dfd4;--accent:#2f5d50;--on:#fff;--danger:#a33a2c;--warnbg:#fbf0d9;--warn:#7a5a12}
+@media(prefers-color-scheme:dark){:root{--bg:#141412;--card:#1e1d1a;--text:#f0ece4;--muted:#a09a8e;--line:#34322c;--accent:#7fb5a3;--on:#10201a;--danger:#e58a7c;--warnbg:#3a3118;--warn:#e6c36a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 Georgia,'Times New Roman',serif}
+main{max-width:560px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:26px;font-weight:600;margin:0}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.stat .n{font-size:28px;font-weight:600}.stat .l,.muted{color:var(--muted);font-size:14px}
+input,select,button{font:inherit;color:var(--text)}
+input,select{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;min-width:0;width:100%}
+button{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:9px 14px;cursor:pointer}
+button.primary{background:var(--accent);color:var(--on);border-color:var(--accent)}
+button.ghost{border:0;background:none;padding:6px;color:var(--muted)}
+.row{display:flex;gap:8px;margin-bottom:8px}
+.task{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.task:first-child{border-top:0}
+.task .t{flex:1;min-width:0}.task .title{font-weight:600;overflow-wrap:anywhere}
+.pill{font-size:12px;border:1px solid var(--line);border-radius:99px;padding:1px 9px;color:var(--muted)}
+.pill.high{color:var(--danger);border-color:var(--danger)}
+.over{color:var(--danger)}
+.err{color:var(--danger);font-size:14px;min-height:20px}
+.plan{white-space:pre-wrap;font-size:15px;margin-top:10px}
+.note{background:var(--warnbg);color:var(--warn);border-radius:8px;padding:8px 10px;font-size:14px;margin-bottom:12px}
+.hide{display:none}
 </style>
 </head>
 <body>
-  <div class="container">
-    <h1>AlexaTasker</h1>
-    <p class="subtitle">A task list for Alexa+</p>
+<main>
+  <div class="top"><h1>TaskWise</h1><button id="out" class="ghost hide">Sign out</button></div>
 
-    <div class="add-form">
-      <input type="text" id="taskInput" placeholder="Add a task" />
-      <input type="date" id="dueInput" />
-      <button onclick="addTask()">Add</button>
+  <section id="gate" class="card">
+    <p style="margin-top:0">Enter your access key to open your tasks. It is saved only in this browser.</p>
+    <div class="row"><input id="key" type="password" placeholder="Access key" autocomplete="off"><button id="go" class="primary">Continue</button></div>
+    <div id="gerr" class="err"></div>
+  </section>
+
+  <section id="app" class="hide">
+    <div id="warn" class="note hide"></div>
+    <div class="stats">
+      <div class="card stat" style="margin:0"><div class="n" id="s-open">0</div><div class="l">Open</div></div>
+      <div class="card stat" style="margin:0"><div class="n over" id="s-over">0</div><div class="l">Overdue</div></div>
     </div>
 
-    <div id="taskList"></div>
+    <div class="card">
+      <div class="row"><input id="a-title" placeholder="Write the quarterly report" aria-label="Task title"></div>
+      <div class="row">
+        <select id="a-pri" aria-label="Priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
+        <input id="a-due" type="date" aria-label="Due date">
+        <input id="a-est" type="number" min="1" max="1440" placeholder="Min" aria-label="Estimated minutes">
+      </div>
+      <button id="a-add" class="primary">Add task</button>
+      <div id="a-err" class="err"></div>
+    </div>
 
-    <button class="plan-btn" onclick="planDay()">Plan my day</button>
-    <div id="planOutput" class="plan-output"></div>
-  </div>
+    <div class="card" id="list"></div>
 
-  <script>
-    const API_BASE = "https://alexatasker.onrender.com";
-    let sessionId = null;
-    let initPromise = null;
+    <div class="card">
+      <strong>Plan my day</strong>
+      <div class="row" style="margin-top:8px;align-items:center">
+        <label class="muted" for="avail">Free minutes</label>
+        <input id="avail" type="number" min="15" max="1440" step="15" value="180" style="width:100px">
+        <button id="plan-go">Plan</button>
+      </div>
+      <div class="muted">Plans from your task list only. Calendar events are not included.</div>
+      <div id="plan" class="plan"></div>
+    </div>
+  </section>
+</main>
+<script>
+var STORE='taskwise_key',key='',rid=1;
+try{key=localStorage.getItem(STORE)||''}catch(e){}
+var $=function(id){return document.getElementById(id)};
+var today=new Date().toLocaleDateString('en-CA');
 
-    function showError(msg) {
-      const listEl = document.getElementById("taskList");
-      listEl.innerHTML = `<div class="error-box">Error: ${msg}</div>`;
-    }
+function signOut(msg){
+  key='';try{localStorage.removeItem(STORE)}catch(e){}
+  $('app').classList.add('hide');$('out').classList.add('hide');$('gate').classList.remove('hide');
+  $('gerr').textContent=msg||'';
+}
+async function call(name,args){
+  var res=await fetch('/mcp',{method:'POST',
+    headers:{'Content-Type':'application/json','Accept':'application/json, text/event-stream','Authorization':'Bearer '+key},
+    body:JSON.stringify({jsonrpc:'2.0',id:rid++,method:'tools/call',params:{name:name,arguments:args||{}}})});
+  if(res.status===401){signOut('That access key was not accepted.');throw new Error('Not signed in.')}
+  if(!res.ok)throw new Error('The server returned an error ('+res.status+'). Try again.');
+  var data=await res.json();
+  if(data.error)throw new Error(data.error.message);
+  var texts=(data.result.content||[]).map(function(c){return c.text});
+  if(data.result.isError)throw new Error(texts[0]||'That did not work.');
+  return texts;
+}
+function node(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
 
-    async function ensureInitialized() {
-      if (sessionId) return;
-      if (initPromise) return initPromise;
+async function load(){
+  $('list').replaceChildren(node('div','muted','Loading your tasks. The first load can take up to a minute.'));
+  try{
+    var t=await call('list_tasks',{includeCompleted:false});
+    var tasks=JSON.parse(t[1]||'[]');
+    render(tasks);
+  }catch(e){
+    if(e.message==='Not signed in.')return;
+    $('list').replaceChildren(node('div','err',"Couldn't load your tasks. "+e.message));
+  }
+}
+function render(tasks){
+  var w={high:0,medium:1,low:2};
+  tasks.sort(function(a,b){
+    var ao=a.dueDate&&a.dueDate<today?0:1,bo=b.dueDate&&b.dueDate<today?0:1;if(ao!==bo)return ao-bo;
+    var ad=a.dueDate||'9999',bd=b.dueDate||'9999';if(ad!==bd)return ad<bd?-1:1;return w[a.priority]-w[b.priority];
+  });
+  var over=tasks.filter(function(t){return t.dueDate&&t.dueDate<today}).length;
+  $('s-open').textContent=tasks.length;$('s-over').textContent=over;
+  var list=$('list');list.replaceChildren();
+  if(!tasks.length){list.appendChild(node('div','muted','Start with one task. Add it above.'));return}
+  tasks.forEach(function(t){
+    var row=node('div','task');
+    var done=node('button','',''); done.textContent='Done'; done.setAttribute('aria-label','Complete '+t.title);
+    done.onclick=function(){act(function(){return call('complete_task',{id:t.id})})};
+    var box=node('div','t');box.appendChild(node('div','title',t.title));
+    var late=t.dueDate&&t.dueDate<today;
+    var meta=(t.dueDate?(late?'Overdue, was due '+t.dueDate:(t.dueDate===today?'Due today':'Due '+t.dueDate)):'No due date')+(t.estimateMinutes?' · '+t.estimateMinutes+' min':'');
+    box.appendChild(node('div','muted'+(late?' over':''),meta));
+    var pill=node('span','pill '+t.priority,t.priority);
+    var del=node('button','ghost','Delete');del.setAttribute('aria-label','Delete '+t.title);
+    del.onclick=function(){
+      if(!confirm('Delete "'+t.title+'"? This cannot be undone.'))return;
+      act(function(){return call('delete_task',{id:t.id,confirm:true})});
+    };
+    row.append(done,box,pill,del);list.appendChild(row);
+  });
+}
+async function act(fn){
+  try{$('warn').classList.add('hide');await fn();await load()}
+  catch(e){if(e.message!=='Not signed in.'){$('warn').textContent=e.message;$('warn').classList.remove('hide')}}
+}
 
-      initPromise = (async () => {
-        const res = await fetch(`${API_BASE}/mcp`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream"
-          },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: 1,
-            method: "initialize",
-            params: {
-              protocolVersion: "2025-11-25",
-              capabilities: {},
-              clientInfo: { name: "alexatasker-dashboard", version: "0.1.0" }
-            }
-          }),
-        });
-        if (!res.ok) {
-          throw new Error(`Initialize failed with status ${res.status}`);
-        }
-        sessionId = res.headers.get("mcp-session-id");
+$('a-add').onclick=async function(){
+  var title=$('a-title').value.trim();
+  if(!title){$('a-err').textContent='Enter a task title first';return}
+  var args={title:title,priority:$('a-pri').value};
+  if($('a-due').value)args.dueDate=$('a-due').value;
+  if($('a-est').value)args.estimateMinutes=Number($('a-est').value);
+  $('a-err').textContent='';
+  try{
+    await call('add_task',args);
+    $('a-title').value='';$('a-due').value='';$('a-est').value='';
+    await load();
+  }catch(e){if(e.message!=='Not signed in.')$('a-err').textContent=e.message}
+};
+$('a-title').oninput=function(){$('a-err').textContent=''};
 
-        await fetch(`${API_BASE}/mcp`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream",
-            ...(sessionId ? { "Mcp-Session-Id": sessionId } : {})
-          },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            method: "notifications/initialized"
-          }),
-        });
-      })();
+$('plan-go').onclick=async function(){
+  var mins=Number($('avail').value);
+  if(!mins||mins<1){$('plan').textContent='Enter how many minutes you have free.';return}
+  $('plan').textContent='Planning…';
+  try{var t=await call('plan_day',{availableMinutes:mins});$('plan').textContent=t[0]}
+  catch(e){if(e.message!=='Not signed in.')$('plan').textContent="Couldn't build a plan. "+e.message}
+};
 
-      return initPromise;
-    }
-
-    async function callTool(name, args = {}) {
-      try {
-        await ensureInitialized();
-        const res = await fetch(`${API_BASE}/mcp`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream",
-            ...(sessionId ? { "Mcp-Session-Id": sessionId } : {})
-          },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: Date.now(),
-            method: "tools/call",
-            params: { name, arguments: args },
-          }),
-        });
-        if (!res.ok) {
-          throw new Error(`Server responded with status ${res.status}`);
-        }
-        return await res.json();
-      } catch (err) {
-        showError(err.message);
-        throw err;
-      }
-    }
-
-    function parseTasksJson(result) {
-      const blocks = result?.result?.content || [];
-      for (const block of blocks) {
-        try {
-          const parsed = JSON.parse(block.text);
-          if (Array.isArray(parsed)) return parsed;
-        } catch (e) {}
-      }
-      return null;
-    }
-
-    async function addTask() {
-      const title = document.getElementById("taskInput").value.trim();
-      const dueDate = document.getElementById("dueInput").value;
-      if (!title) return;
-      try {
-        await callTool("add_task", dueDate ? { title, dueDate } : { title });
-        document.getElementById("taskInput").value = "";
-        document.getElementById("dueInput").value = "";
-        loadTasks();
-      } catch (e) {}
-    }
-
-    async function completeTaskById(id) {
-      try {
-        await callTool("complete_task", { id });
-        loadTasks();
-      } catch (e) {}
-    }
-
-    async function loadTasks() {
-      try {
-        const result = await callTool("list_tasks", {});
-        const tasks = parseTasksJson(result);
-        const listEl = document.getElementById("taskList");
-
-        if (!tasks || tasks.length === 0) {
-          listEl.innerHTML = '<div class="empty">Nothing on the list yet.</div>';
-          return;
-        }
-
-        listEl.innerHTML = tasks
-          .map(
-            (t) => `
-            <div class="task">
-              <span>
-                <span class="task-title">${t.title}</span>
-                ${t.dueDate ? `<span class="task-due">due ${t.dueDate}</span>` : ""}
-              </span>
-              <button class="done-btn" onclick="completeTaskById('${t.id}')">done</button>
-            </div>
-          `
-          )
-          .join("");
-      } catch (e) {}
-    }
-
-    async function planDay() {
-      try {
-        const result = await callTool("plan_day", {});
-        const text = result?.result?.content?.[0]?.text || "No plan available.";
-        const out = document.getElementById("planOutput");
-        out.textContent = text;
-        out.style.display = "block";
-      } catch (e) {}
-    }
-
-    loadTasks();
-  </script>
+function open(){
+  $('gate').classList.add('hide');$('app').classList.remove('hide');$('out').classList.remove('hide');load();
+}
+$('go').onclick=function(){
+  var v=$('key').value.trim();
+  if(!v){$('gerr').textContent='Enter your access key';return}
+  key=v;try{localStorage.setItem(STORE,key)}catch(e){}
+  $('key').value='';$('gerr').textContent='';open();
+};
+$('out').onclick=function(){signOut('')};
+if(key)open();
+</script>
 </body>
 </html>
