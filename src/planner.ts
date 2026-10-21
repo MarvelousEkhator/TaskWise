@@ -1,4 +1,3 @@
-import { formatReport, runLaunchGuard } from "./launchguard.js";
 import type { Priority, Task } from "./tasks.js";
 
 // Used only when a task has no estimate. The plan always says when this was assumed.
@@ -151,4 +150,3 @@ export function formatPlan(result: PlanResult): string {
 
   return lines.join("\n");
 }
-  
