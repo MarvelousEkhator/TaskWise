@@ -2,6 +2,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import "dotenv/config";
 import express, { type NextFunction, type Request, type Response } from "express";
+import helmet from "helmet";
+import { rateLimit } from "express-rate-limit";
 import { timingSafeEqual } from "crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -28,6 +30,32 @@ const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 const API_KEY = process.env.TASKWISE_API_KEY;
 
 const app = express();
+
+// Render sits behind one proxy. This makes req.ip the visitor's real address,
+// which the rate limiters below need.
+app.set("trust proxy", 1);
+
+// ---------- Security headers ----------
+// The dashboard uses inline <script> and <style>, so those are allowed for this site only.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:"],
+        connectSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        frameAncestors: ["'none'"],
+        upgradeInsecureRequests: null,
+      },
+    },
+  })
+);
+
 app.use(express.json({ limit: "1mb" }));
 
 // ---------- Dashboard (static files from /public) ----------
@@ -49,6 +77,33 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     return;
   }
   next();
+});
+
+// ---------- Rate limiting for /mcp ----------
+const tooMany = {
+  jsonrpc: "2.0",
+  error: { code: -32029, message: "Too many requests. Wait a little and try again." },
+  id: null,
+};
+
+// General limit: 120 requests per minute per visitor.
+const mcpLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: tooMany,
+});
+
+// Failed-request limit: 10 failures (like wrong keys) per 15 minutes per visitor.
+// Successful requests do not count, so normal use is never slowed down.
+const failureLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  skipSuccessfulRequests: true,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: tooMany,
 });
 
 // ---------- Optional API key ----------
@@ -303,9 +358,7 @@ function buildServer() {
 
 // ---------- MCP endpoint (stateless) ----------
 // A new server + transport is created for every request, so sessions are disabled.
-// This is what fixes the 400 the dashboard hit: a session created by "initialize"
-// could never be found by the next request. No handshake is needed from the dashboard.
-app.post("/mcp", requireApiKey, async (req: Request, res: Response) => {
+app.post("/mcp", failureLimiter, mcpLimiter, requireApiKey, async (req: Request, res: Response) => {
   const server = buildServer();
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
