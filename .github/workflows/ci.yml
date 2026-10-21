@@ -15,6 +15,7 @@ jobs:
       - run: npm install
       - run: npx prisma generate
       - run: npm run typecheck
+      - run: npm run lint
       - run: npm test
       - name: Dependency audit (reported, does not block)
         run: npm audit --audit-level=high
