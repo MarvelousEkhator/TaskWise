@@ -8,8 +8,33 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+model User {
+  id          String    @id @default(uuid())
+  googleId    String    @unique
+  email       String    @unique
+  name        String?
+  picture     String?
+  createdAt   DateTime  @default(now())
+  lastLoginAt DateTime  @default(now())
+  tasks       Task[]
+  sessions    Session[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
 model Task {
   id              String    @id @default(uuid())
+  userId          String?
+  user            User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
   title           String
   dueDate         String?
   priority        String    @default("medium")
@@ -18,4 +43,6 @@ model Task {
   done            Boolean   @default(false)
   createdAt       DateTime  @default(now())
   completedAt     DateTime?
+
+  @@index([userId])
 }
