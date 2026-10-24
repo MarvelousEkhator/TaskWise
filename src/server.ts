@@ -4,7 +4,6 @@ import "dotenv/config";
 import express, { type NextFunction, type Request, type Response } from "express";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
-import { timingSafeEqual } from "crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
@@ -20,19 +19,17 @@ import {
 } from "./tasks.js";
 import { buildPlan, formatPlan } from "./planner.js";
 import { formatReport, runLaunchGuard } from "./launchguard.js";
+import { apiRouter, authConfigWarnings, authRouter, getAuthUser, requireAuth, type AuthUser } from "./auth.js";
 
 const SERVER_NAME = "taskwise";
-const SERVER_VERSION = "0.2.0";
+const SERVER_VERSION = "0.3.0";
 
-// Set ALLOWED_ORIGIN to your dashboard URL in production. "*" is only for local development.
+// Set ALLOWED_ORIGIN to your site's address in production. "*" is only for local development.
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
-// If TASKWISE_API_KEY is set, every /mcp request must send "Authorization: Bearer <key>".
-const API_KEY = process.env.TASKWISE_API_KEY;
 
 const app = express();
 
-// Render sits behind one proxy. This makes req.ip the visitor's real address,
-// which the rate limiters below need.
+// Render sits behind one proxy. This makes req.ip the visitor's real address.
 app.set("trust proxy", 1);
 
 // ---------- Security headers ----------
@@ -66,10 +63,7 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 app.use((req: Request, res: Response, next: NextFunction) => {
   res.header("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
   if (ALLOWED_ORIGIN !== "*") res.header("Vary", "Origin");
-  res.header(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Accept, Authorization, Mcp-Session-Id"
-  );
+  res.header("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, Mcp-Session-Id");
   res.header("Access-Control-Expose-Headers", "Mcp-Session-Id");
   res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
   if (req.method === "OPTIONS") {
@@ -79,7 +73,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// ---------- Rate limiting for /mcp ----------
+// ---------- Rate limiting ----------
 const tooMany = {
   jsonrpc: "2.0",
   error: { code: -32029, message: "Too many requests. Wait a little and try again." },
@@ -96,7 +90,6 @@ const mcpLimiter = rateLimit({
 });
 
 // Failed-request limit: 10 failures (like wrong keys) per 15 minutes per visitor.
-// Successful requests do not count, so normal use is never slowed down.
 const failureLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
@@ -106,30 +99,17 @@ const failureLimiter = rateLimit({
   message: tooMany,
 });
 
-// ---------- Optional API key ----------
-function keysMatch(provided: string, expected: string): boolean {
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
+// Sign-in routes: 30 requests per 15 minutes per visitor.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: tooMany,
+});
 
-function requireApiKey(req: Request, res: Response, next: NextFunction): void {
-  if (!API_KEY) {
-    next();
-    return;
-  }
-  const header = req.headers.authorization ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
-  if (!token || !keysMatch(token, API_KEY)) {
-    res.status(401).json({
-      jsonrpc: "2.0",
-      error: { code: -32001, message: "Unauthorized: missing or invalid API key." },
-      id: null,
-    });
-    return;
-  }
-  next();
-}
+app.use("/auth", authLimiter, authRouter);
+app.use("/api", mcpLimiter, apiRouter);
 
 // ---------- Helpers for tool results ----------
 function textResult(...texts: string[]) {
@@ -150,8 +130,8 @@ const dateSchema = z
 
 const prioritySchema = z.enum(["low", "medium", "high"]);
 
-// ---------- MCP server ----------
-function buildServer() {
+// ---------- MCP server (one per signed-in user) ----------
+function buildServer(user: AuthUser) {
   const server = new McpServer({
     name: SERVER_NAME,
     version: SERVER_VERSION,
@@ -177,7 +157,7 @@ function buildServer() {
     },
     async ({ title, dueDate, priority, estimateMinutes, notes }) => {
       try {
-        const task = await addTask({ title, dueDate, priority, estimateMinutes, notes });
+        const task = await addTask(user.id, { title, dueDate, priority, estimateMinutes, notes });
         return textResult(`Added task: "${task.title}" (id: ${task.id})`, JSON.stringify(task));
       } catch (err) {
         return errorResult(errorMessage(err));
@@ -198,7 +178,7 @@ function buildServer() {
     },
     async ({ includeCompleted }) => {
       try {
-        const tasks = await listTasks(includeCompleted);
+        const tasks = await listTasks(user.id, includeCompleted);
         const summary = tasks.length
           ? tasks
               .map(
@@ -250,7 +230,7 @@ function buildServer() {
         return errorResult("Nothing to update. Provide at least one field to change.");
       }
       try {
-        const task = await updateTask(id, changes);
+        const task = await updateTask(user.id, id, changes);
         if (!task) return errorResult(`No task found with id ${id}. Use list_tasks to find the right id.`);
         return textResult(`Updated task: "${task.title}"`, JSON.stringify(task));
       } catch (err) {
@@ -265,7 +245,7 @@ function buildServer() {
     { id: z.string().describe("Task id from list_tasks") },
     async ({ id }) => {
       try {
-        const task = await completeTask(id);
+        const task = await completeTask(user.id, id);
         if (!task) return errorResult(`No task found with id ${id}. Use list_tasks to find the right id.`);
         return textResult(`Marked "${task.title}" as done.`, JSON.stringify(task));
       } catch (err) {
@@ -287,14 +267,14 @@ function buildServer() {
     },
     async ({ id, confirm }) => {
       try {
-        const task = await getTask(id);
+        const task = await getTask(user.id, id);
         if (!task) return errorResult(`No task found with id ${id}. Use list_tasks to find the right id.`);
         if (confirm !== true) {
           return textResult(
             `Not deleted. Ask the user to confirm deleting "${task.title}", then call delete_task again with confirm=true.`
           );
         }
-        await deleteTask(id);
+        await deleteTask(user.id, id);
         return textResult(`Deleted task: "${task.title}".`);
       } catch (err) {
         return errorResult(errorMessage(err));
@@ -320,7 +300,7 @@ function buildServer() {
     },
     async ({ date, availableMinutes }) => {
       try {
-        const pending = await listTasks(false);
+        const pending = await listTasks(user.id, false);
         const plan = buildPlan(pending, { date, availableMinutes });
         return textResult(formatPlan(plan), JSON.stringify(plan));
       } catch (err) {
@@ -329,37 +309,40 @@ function buildServer() {
     }
   );
 
-  server.tool(
-    "launchguard_report",
-    "DEVELOPER MODE ONLY. Run LaunchGuard, a read-only launch-readiness check of this project's files and settings: " +
-      "build and test setup, secrets in files, security configuration, API and backend health, UX basics, and documentation. " +
-      "Use only when the developer explicitly asks for LaunchGuard or a launch-readiness check. Never call it during normal " +
-      "task or planning conversations. It changes nothing and never shows secret values. It does not run builds or tests, and " +
-      "it is not a penetration test: never tell the user the app is 'secure'. Report findings with their CONFIRMED, SUSPECTED, " +
-      "or NEEDS MANUAL REVIEW label. Never apply fixes automatically: describe the change and get the developer's agreement first.",
-    {
-      minSeverity: z
-        .enum(["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"])
-        .optional()
-        .describe("Lowest severity to show. Defaults to INFO (everything)"),
-    },
-    async ({ minSeverity }) => {
-      try {
-        const report = runLaunchGuard();
-        return textResult(formatReport(report, minSeverity ?? "INFO"), JSON.stringify(report));
-      } catch (err) {
-        return errorResult(errorMessage(err));
+  // LaunchGuard shows project settings, so only the admin account gets this tool.
+  if (user.isAdmin) {
+    server.tool(
+      "launchguard_report",
+      "DEVELOPER MODE ONLY. Run LaunchGuard, a read-only launch-readiness check of this project's files and settings: " +
+        "build and test setup, secrets in files, security configuration, API and backend health, UX basics, and documentation. " +
+        "Use only when the developer explicitly asks for LaunchGuard or a launch-readiness check. Never call it during normal " +
+        "task or planning conversations. It changes nothing and never shows secret values. It does not run builds or tests, and " +
+        "it is not a penetration test: never tell the user the app is 'secure'. Report findings with their CONFIRMED, SUSPECTED, " +
+        "or NEEDS MANUAL REVIEW label. Never apply fixes automatically: describe the change and get the developer's agreement first.",
+      {
+        minSeverity: z
+          .enum(["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"])
+          .optional()
+          .describe("Lowest severity to show. Defaults to INFO (everything)"),
+      },
+      async ({ minSeverity }) => {
+        try {
+          const report = runLaunchGuard();
+          return textResult(formatReport(report, minSeverity ?? "INFO"), JSON.stringify(report));
+        } catch (err) {
+          return errorResult(errorMessage(err));
+        }
       }
-    }
-  );
+    );
+  }
 
   return server;
 }
 
 // ---------- MCP endpoint (stateless) ----------
 // A new server + transport is created for every request, so sessions are disabled.
-app.post("/mcp", failureLimiter, mcpLimiter, requireApiKey, async (req: Request, res: Response) => {
-  const server = buildServer();
+app.post("/mcp", failureLimiter, mcpLimiter, requireAuth, async (req: Request, res: Response) => {
+  const server = buildServer(getAuthUser(res));
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
@@ -413,7 +396,10 @@ app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
 
 const PORT = Number(process.env.PORT) || 3000;
 app.listen(PORT, () => {
-  console.log(`${SERVER_NAME} MCP server v${SERVER_VERSION} running on port ${PORT}`);
-  if (!API_KEY) console.warn("Warning: TASKWISE_API_KEY is not set. /mcp is open to anyone.");
+  console.log(`${SERVER_NAME} server v${SERVER_VERSION} running on port ${PORT}`);
+  for (const warning of authConfigWarnings()) console.warn(`Warning: ${warning}`);
+  if (!process.env.TASKWISE_API_KEY) {
+    console.warn("Note: TASKWISE_API_KEY is not set, so the owner API key for agents is off.");
+  }
   if (ALLOWED_ORIGIN === "*") console.warn("Warning: ALLOWED_ORIGIN is '*'. Restrict it in production.");
 });
