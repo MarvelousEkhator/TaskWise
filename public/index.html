@@ -11,7 +11,7 @@
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 Georgia,'Times New Roman',serif}
 main{max-width:560px;margin:0 auto;padding:20px 16px 48px}
 h1{font-size:26px;font-weight:600;margin:0}
-.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:16px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
 .stat .n{font-size:28px;font-weight:600}.stat .l,.muted{color:var(--muted);font-size:14px}
@@ -20,6 +20,9 @@ input,select{background:var(--bg);border:1px solid var(--line);border-radius:8px
 button{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:9px 14px;cursor:pointer}
 button.primary{background:var(--accent);color:var(--on);border-color:var(--accent)}
 button.ghost{border:0;background:none;padding:6px;color:var(--muted)}
+button.danger{color:var(--danger);border-color:var(--danger)}
+a.btn{display:inline-block;text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:10px 16px;color:var(--text);background:var(--card)}
+a.btn.primary{background:var(--accent);color:var(--on);border-color:var(--accent)}
 .row{display:flex;gap:8px;margin-bottom:8px}
 .task{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
 .task:first-child{border-top:0}
@@ -38,11 +41,14 @@ pre.report{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);bord
 </head>
 <body>
 <main>
-  <div class="top"><h1>TaskWise</h1><button id="out" class="ghost hide">Sign out</button></div>
+  <div class="top">
+    <h1>TaskWise</h1>
+    <div><span id="who" class="muted"></span> <button id="out" class="ghost hide">Sign out</button></div>
+  </div>
 
   <section id="gate" class="card">
-    <p style="margin-top:0">Enter your access key to open your tasks. It is saved only in this browser.</p>
-    <div class="row"><input id="key" type="password" placeholder="Access key" autocomplete="off"><button id="go" class="primary">Continue</button></div>
+    <p style="margin-top:0">Sign in with your Google account to open your tasks. Each person only sees their own tasks.</p>
+    <a class="btn primary" href="/auth/google">Sign in with Google</a>
     <div id="gerr" class="err"></div>
   </section>
 
@@ -77,9 +83,9 @@ pre.report{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);bord
       <div id="plan" class="plan"></div>
     </div>
 
-    <details class="card">
+    <details id="lg" class="card hide">
       <summary>Developer mode: LaunchGuard</summary>
-      <p class="muted" style="margin:8px 0">Checks this project's files and settings before you launch. It changes nothing and never shows secret values.</p>
+      <p class="muted" style="margin:8px 0">Checks this project's files and settings before you launch. It changes nothing and never shows secret values. Only the admin account sees this.</p>
       <div class="row">
         <select id="lg-sev" aria-label="Lowest severity to show">
           <option value="INFO">Show everything</option>
@@ -92,24 +98,29 @@ pre.report{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);bord
       <div id="lg-msg" class="err"></div>
       <pre id="lg-out" class="report" hidden></pre>
     </details>
+
+    <details class="card">
+      <summary>Your account</summary>
+      <p class="muted" style="margin:8px 0">Deleting your account permanently removes you and all of your tasks. This cannot be undone.</p>
+      <button id="del-acct" class="danger">Delete my account</button>
+      <div id="del-err" class="err"></div>
+    </details>
   </section>
 </main>
 <script>
-var STORE='taskwise_key',key='',rid=1;
-try{key=localStorage.getItem(STORE)||''}catch(e){}
+var rid=1;
 var $=function(id){return document.getElementById(id)};
 var today=new Date().toLocaleDateString('en-CA');
 
-function signOut(msg){
-  key='';try{localStorage.removeItem(STORE)}catch(e){}
-  $('app').classList.add('hide');$('out').classList.add('hide');$('gate').classList.remove('hide');
-  $('gerr').textContent=msg||'';
+function showGate(msg){
+  $('app').classList.add('hide');$('out').classList.add('hide');$('who').textContent='';
+  $('gate').classList.remove('hide');$('gerr').textContent=msg||'';
 }
 async function call(name,args){
-  var res=await fetch('/mcp',{method:'POST',
-    headers:{'Content-Type':'application/json','Accept':'application/json, text/event-stream','Authorization':'Bearer '+key},
+  var res=await fetch('/mcp',{method:'POST',credentials:'same-origin',
+    headers:{'Content-Type':'application/json','Accept':'application/json, text/event-stream'},
     body:JSON.stringify({jsonrpc:'2.0',id:rid++,method:'tools/call',params:{name:name,arguments:args||{}}})});
-  if(res.status===401){signOut('That access key was not accepted.');throw new Error('Not signed in.')}
+  if(res.status===401){showGate('Your session ended. Please sign in again.');throw new Error('Not signed in.')}
   if(res.status===429)throw new Error('Too many requests. Wait a minute and try again.');
   if(!res.ok)throw new Error('The server returned an error ('+res.status+'). Try again.');
   var data=await res.json();
@@ -194,17 +205,36 @@ $('lg-run').onclick=async function(){
   }catch(e){if(e.message!=='Not signed in.')$('lg-msg').textContent="Couldn't run LaunchGuard. "+e.message}
 };
 
-function open(){
-  $('gate').classList.add('hide');$('app').classList.remove('hide');$('out').classList.remove('hide');load();
-}
-$('go').onclick=function(){
-  var v=$('key').value.trim();
-  if(!v){$('gerr').textContent='Enter your access key';return}
-  key=v;try{localStorage.setItem(STORE,key)}catch(e){}
-  $('key').value='';$('gerr').textContent='';open();
+$('out').onclick=async function(){
+  try{await fetch('/auth/logout',{method:'POST',credentials:'same-origin'})}catch(e){}
+  showGate('');
 };
-$('out').onclick=function(){signOut('')};
-if(key)open();
+
+$('del-acct').onclick=async function(){
+  if(!confirm('Delete your account and ALL of your tasks? This cannot be undone.'))return;
+  $('del-err').textContent='';
+  try{
+    var res=await fetch('/api/account/delete',{method:'POST',credentials:'same-origin'});
+    if(!res.ok){$('del-err').textContent="Couldn't delete the account. Try again.";return}
+    showGate('Your account and tasks were deleted.');
+  }catch(e){$('del-err').textContent="Couldn't reach the server. Try again."}
+};
+
+async function start(){
+  var failed=new URLSearchParams(location.search).get('auth')==='failed';
+  if(location.search)history.replaceState(null,'','/');
+  try{
+    var res=await fetch('/api/me',{credentials:'same-origin',headers:{'Accept':'application/json'}});
+    if(res.status===401){showGate(failed?"Sign-in didn't complete. Please try again.":'');return}
+    if(!res.ok){showGate("Couldn't reach the server. Try again in a minute.");return}
+    var me=await res.json();
+    $('who').textContent=me.email;
+    $('gate').classList.add('hide');$('app').classList.remove('hide');$('out').classList.remove('hide');
+    if(me.isAdmin)$('lg').classList.remove('hide');
+    load();
+  }catch(e){showGate("Couldn't reach the server. Try again in a minute.")}
+}
+start();
 </script>
 </body>
 </html>
