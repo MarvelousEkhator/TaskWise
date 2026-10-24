@@ -32,8 +32,8 @@ export interface TaskUpdate {
   notes?: string | null;
 }
 
-// Tasks are stored in Postgres (Neon) via Prisma and survive restarts.
-// NOTE: there are no user accounts yet, so tasks are shared by everyone who can reach the server.
+// Tasks live in Postgres (Neon). Every function below is limited to ONE user:
+// a task id that belongs to someone else behaves exactly like a task that does not exist.
 
 function toTask(row: DbTask): Task {
   return {
@@ -73,7 +73,7 @@ function assertEstimate(value: number): void {
   }
 }
 
-export async function addTask(input: NewTaskInput): Promise<Task> {
+export async function addTask(userId: string, input: NewTaskInput): Promise<Task> {
   const title = input.title.trim();
   if (!title) throw new Error("Task title cannot be empty.");
   if (input.dueDate !== undefined) assertDate(input.dueDate);
@@ -81,6 +81,7 @@ export async function addTask(input: NewTaskInput): Promise<Task> {
 
   const row = await prisma.task.create({
     data: {
+      userId,
       title,
       dueDate: input.dueDate ?? null,
       priority: input.priority ?? "medium",
@@ -91,20 +92,20 @@ export async function addTask(input: NewTaskInput): Promise<Task> {
   return toTask(row);
 }
 
-export async function listTasks(includeCompleted = false): Promise<Task[]> {
+export async function listTasks(userId: string, includeCompleted = false): Promise<Task[]> {
   const rows = await prisma.task.findMany({
-    where: includeCompleted ? {} : { done: false },
+    where: includeCompleted ? { userId } : { userId, done: false },
     orderBy: { createdAt: "asc" },
   });
   return rows.map(toTask);
 }
 
-export async function getTask(id: string): Promise<Task | null> {
-  const row = await prisma.task.findUnique({ where: { id } });
+export async function getTask(userId: string, id: string): Promise<Task | null> {
+  const row = await prisma.task.findFirst({ where: { id, userId } });
   return row ? toTask(row) : null;
 }
 
-export async function updateTask(id: string, changes: TaskUpdate): Promise<Task | null> {
+export async function updateTask(userId: string, id: string, changes: TaskUpdate): Promise<Task | null> {
   // Validate everything first so a bad value never leaves a half-updated task.
   if (changes.title !== undefined && !changes.title.trim()) {
     throw new Error("Task title cannot be empty.");
@@ -120,7 +121,7 @@ export async function updateTask(id: string, changes: TaskUpdate): Promise<Task 
   if (changes.notes !== undefined) data.notes = changes.notes?.trim() || null;
 
   try {
-    const row = await prisma.task.update({ where: { id }, data });
+    const row = await prisma.task.update({ where: { id, userId }, data });
     return toTask(row);
   } catch (err) {
     if (isNotFound(err)) return null;
@@ -128,10 +129,10 @@ export async function updateTask(id: string, changes: TaskUpdate): Promise<Task 
   }
 }
 
-export async function completeTask(id: string): Promise<Task | null> {
+export async function completeTask(userId: string, id: string): Promise<Task | null> {
   try {
     const row = await prisma.task.update({
-      where: { id },
+      where: { id, userId },
       data: { done: true, completedAt: new Date() },
     });
     return toTask(row);
@@ -141,7 +142,7 @@ export async function completeTask(id: string): Promise<Task | null> {
   }
 }
 
-export async function deleteTask(id: string): Promise<boolean> {
-  const result = await prisma.task.deleteMany({ where: { id } });
+export async function deleteTask(userId: string, id: string): Promise<boolean> {
+  const result = await prisma.task.deleteMany({ where: { id, userId } });
   return result.count > 0;
 }
